@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/Loop-company/http_gateway/internal/authclient"
-	"github.com/Loop-company/http_gateway/internal/userclient"
 	"github.com/Loop-company/http_gateway/internal/handler"
+	"github.com/Loop-company/http_gateway/internal/middleware"
+	"github.com/Loop-company/http_gateway/internal/userclient"
 	"github.com/gin-gonic/gin"
 )
 
@@ -42,12 +43,24 @@ func main() {
 	userHandler := handler.NewUserHandler(userClient)
 
 	r := gin.Default()
-	r.POST("/api/auth/login", authHandler.Login)
 
-	api := r.Group("/api")
+	// Public routes
+	auth := r.Group("/api/auth")
 	{
-		api.GET("/users/:id", userHandler.GetProfile)
-		api.PUT("/users/name", userHandler.UpdateName)
+		auth.POST("/register", authHandler.Register)
+		auth.POST("/verify", authHandler.Verify)
+		auth.POST("/login", authHandler.Login)
+	}
+
+	// Protected routes
+	protected := r.Group("/api")
+	protected.Use(middleware.AuthMiddleware(authClient))
+	{
+		protected.POST("/auth/refresh", authHandler.Refresh)
+		protected.POST("/auth/logout", authHandler.Logout)
+
+		protected.GET("/users/:id", userHandler.GetProfile)
+		protected.PUT("/users/name", userHandler.UpdateName)
 	}
 
 	r.GET("/health", func(c *gin.Context) {

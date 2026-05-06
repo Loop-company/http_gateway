@@ -45,6 +45,74 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
+func (c *Client) Register(ctx context.Context, email, password string) (string, error) {
+	resp, err := c.client.Register(ctx, &authpb.RegisterRequest{
+		Email:    email,
+		Password: password,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Message, nil
+}
+
+func (c *Client) Verify(ctx context.Context, email, code string) (string, error) {
+	resp, err := c.client.Verify(ctx, &authpb.VerifyRequest{
+		Email: email,
+		Code:  code,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Guid, nil
+}
+
+func (c *Client) Refresh(ctx context.Context, refreshToken, userAgent, ip string, userGUID, sessionID string) (LoginResponse, error) {
+	var result LoginResponse
+
+	md := metadata.Pairs(
+		"user-agent", userAgent,
+		"x-real-ip", ip,
+		"user_guid", userGUID,
+		"session_id", sessionID,
+	)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	resp, err := c.client.Refresh(ctx, &authpb.RefreshRequest{
+		RefreshToken: refreshToken,
+	})
+	if err != nil {
+		return result, err
+	}
+
+	result = LoginResponse{
+		AccessToken:      resp.AccessToken,
+		RefreshToken:     resp.RefreshToken,
+		AccessExpiresAt:  time.Unix(resp.AccessExpiresAt, 0),
+		RefreshExpiresAt: time.Unix(resp.RefreshExpiresAt, 0),
+	}
+
+	return result, nil
+}
+
+func (c *Client) ValidateToken(ctx context.Context, accessToken string) (string, string, error) {
+	resp, err := c.client.ValidateToken(ctx, &authpb.ValidateTokenRequest{
+		AccessToken: accessToken,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return resp.Guid, resp.SessionId, nil
+}
+
+func (c *Client) Logout(ctx context.Context, userGUID string) error {
+	md := metadata.Pairs("user_guid", userGUID)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	_, err := c.client.Logout(ctx, &authpb.LogoutRequest{})
+	return err
+}
+
 func (c *Client) Login(ctx context.Context, email, password string, userAgent, ip string) (LoginResponse, int, error) {
 	var result LoginResponse
 
