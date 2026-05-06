@@ -9,32 +9,46 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
+	"github.com/Loop-company/http_gateway/internal/authclient"
+	"github.com/Loop-company/http_gateway/internal/userclient"
 	"github.com/Loop-company/http_gateway/internal/handler"
-	"github.com/Loop-company/http_gateway/internal/kafka"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	brokers := []string{"localhost:9092"} // или "kafka:9092" в docker
+	authAddr := os.Getenv("AUTH_SERVICE_ADDR")
+	if authAddr == "" {
+		authAddr = "localhost:50051"
+	}
 
-	producer := kafka.NewAuthProducer(brokers)
-	defer producer.Close()
+	userAddr := os.Getenv("USER_SERVICE_ADDR")
+	if userAddr == "" {
+		userAddr = "localhost:50052"
+	}
 
-	consumer := kafka.NewAuthConsumer(brokers)
-	defer consumer.Close()
+	authClient, err := authclient.New(authAddr)
+	if err != nil {
+		log.Fatalf("failed to create auth client: %v", err)
+	}
+	defer authClient.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	userClient, err := userclient.New(userAddr)
+	if err != nil {
+		log.Fatalf("failed to create user client: %v", err)
+	}
+	defer userClient.Close()
 
-	go consumer.Run(ctx)
-
-	authHandler := handler.NewAuthHandler(producer, consumer)
+	authHandler := handler.NewAuthHandler(authClient)
+	userHandler := handler.NewUserHandler(userClient)
 
 	r := gin.Default()
-
-	// Эндпоинты
 	r.POST("/api/auth/login", authHandler.Login)
+
+	api := r.Group("/api")
+	{
+		api.GET("/users/:id", userHandler.GetProfile)
+		api.PUT("/users/name", userHandler.UpdateName)
+	}
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -58,8 +72,8 @@ func main() {
 
 	log.Println("Shutting down gateway...")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
