@@ -16,9 +16,10 @@ type AuthProducer struct {
 func NewAuthProducer(brokers []string) *AuthProducer {
 	return &AuthProducer{
 		writer: &kafka.Writer{
-			Addr:     kafka.TCP(brokers...),
-			Topic:    loginCommandTopic,
-			Balancer: &kafka.LeastBytes{},
+			Addr:                   kafka.TCP(brokers...),
+			Topic:                  loginCommandTopic,
+			Balancer:               &kafka.LeastBytes{},
+			AllowAutoTopicCreation: false,
 			// Async:    false,
 		},
 	}

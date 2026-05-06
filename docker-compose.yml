@@ -1,12 +1,28 @@
 services:
+  # HTTP API gateway
+  http-gateway:
+    build:
+      context: ./http_gateway
+      dockerfile: Dockerfile
+    container_name: http-gateway
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8080
+    ports:
+      - "8000:8080"
+    depends_on:
+      - auth-service
+    networks:
+      - backend-network
+    restart: unless-stopped
+
   # auth service
   auth-service:
     build:
-      context: ../../auth_service/auth
+      context: ../auth_service/auth
       dockerfile: Dockerfile
     container_name: authentication-backend
     env_file:
-      - ../../auth_service/auth/.env
+      - ../auth_service/auth/.env
     ports:
       - "8080:8080"
     depends_on:
@@ -20,7 +36,7 @@ services:
     image: postgres:15
     container_name: jwt-auth-db
     env_file:
-      - ../../auth_service/auth/.env
+      - ../auth_service/auth/.env
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -36,11 +52,11 @@ services:
   # user service
   user-service:
     build:
-      context: ../../user_service/user-service
+      context: ../user_service/user-service
       dockerfile: Dockerfile
     container_name: user-service
     env_file:
-      - ../../user_service/user-service/.env
+      - ../user_service/user-service/.env
     ports:
       - "8081:8081"
     depends_on:
@@ -56,7 +72,7 @@ services:
     image: postgres:15-alpine
     container_name: db-user
     env_file:
-      - ../../user_service/user-service/.env
+      - ../user_service/user-service/.env
     volumes:
       - postgres_user_data:/var/lib/postgresql/data
     networks:
@@ -124,7 +140,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
       - kafka_data:/var/lib/kafka/data
