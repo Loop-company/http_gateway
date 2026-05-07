@@ -6,11 +6,15 @@ services:
       dockerfile: Dockerfile
     container_name: http-gateway
     environment:
-      AUTH_SERVICE_URL: http://auth-service:8080
+      AUTH_SERVICE_ADDR: auth-service:50051
+      USER_SERVICE_ADDR: user-service:50052
+      ANALYTICS_SERVICE_ADDR: analytics-service:50053
     ports:
       - "8000:8080"
     depends_on:
       - auth-service
+      - user-service
+      - analytics-service
     networks:
       - backend-network
     restart: unless-stopped
@@ -23,11 +27,18 @@ services:
     container_name: authentication-backend
     env_file:
       - ../auth_service/auth/.env
+    environment:
+      GRPC_PORT: 50051
+      KAFKA_BROKERS: kafka:9092
     ports:
-      - "8080:8080"
+      - "50051:50051"
     depends_on:
-      - db-auth
-      - redis-auth
+      db-auth:
+        condition: service_started
+      redis-auth:
+        condition: service_started
+      kafka-topics-init:
+        condition: service_completed_successfully
     networks:
       - backend-network
 
@@ -57,12 +68,18 @@ services:
     container_name: user-service
     env_file:
       - ../user_service/user-service/.env
+    environment:
+      GRPC_PORT: 50052
+      KAFKA_BROKERS: kafka:9092
     ports:
-      - "8081:8081"
+      - "50052:50052"
     depends_on:
-      - db-user
-      - redis-user
-      - kafka
+      db-user:
+        condition: service_started
+      redis-user:
+        condition: service_started
+      kafka-topics-init:
+        condition: service_completed_successfully
     networks:
       - backend-network
     restart: unless-stopped
@@ -99,6 +116,53 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: ../analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    environment:
+      GRPC_ADDR: :50053
+      POSTGRES_HOST: db-analytics
+      POSTGRES_INTERNAL_PORT: 5432
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics_password
+      POSTGRES_DB: analytics
+      POSTGRES_SSL_MODE: disable
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPICS: auth.events,user.events
+      KAFKA_GROUP_ID: analytics-service
+      MIGRATIONS_DIR: migrations
+    ports:
+      - "50053:50053"
+    depends_on:
+      db-analytics:
+        condition: service_healthy
+      kafka-topics-init:
+        condition: service_completed_successfully
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+  db-analytics:
+    image: postgres:16-alpine
+    container_name: db-analytics
+    environment:
+      POSTGRES_DB: analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics_password
+    volumes:
+      - postgres_analytics_data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics -d analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   # zookeeper
@@ -154,9 +218,25 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  kafka-topics-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-topics-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - bash
+      - -c
+      - |
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic auth.events --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic user.events --partitions 3 --replication-factor 1
+    networks:
+      - backend-network
+
 volumes:
   postgres_data:
   postgres_user_data:
+  postgres_analytics_data:
   redis_user_data:
   zookeeper_data:
   kafka_data:

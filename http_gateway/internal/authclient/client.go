@@ -67,19 +67,18 @@ func (c *Client) Verify(ctx context.Context, email, code string) (string, error)
 	return resp.Guid, nil
 }
 
-func (c *Client) Refresh(ctx context.Context, refreshToken, userAgent, ip string, userGUID, sessionID string) (LoginResponse, error) {
+func (c *Client) Refresh(ctx context.Context, refreshToken, accessToken, userAgent, ip string) (LoginResponse, error) {
 	var result LoginResponse
 
 	md := metadata.Pairs(
 		"user-agent", userAgent,
 		"x-real-ip", ip,
-		"user_guid", userGUID,
-		"session_id", sessionID,
 	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	resp, err := c.client.Refresh(ctx, &authpb.RefreshRequest{
 		RefreshToken: refreshToken,
+		AccessToken:  accessToken,
 	})
 	if err != nil {
 		return result, err

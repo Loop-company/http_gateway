@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Loop-company/http_gateway/internal/authclient"
@@ -60,6 +61,7 @@ func (h *AuthHandler) Verify(c *gin.Context) {
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
+		AccessToken  string `json:"access_token"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -67,13 +69,19 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	userGUID, _ := c.Get("user_guid")
-	sessionID, _ := c.Get("session_id")
+	accessToken := strings.TrimSpace(req.AccessToken)
+	if accessToken == "" {
+		accessToken = extractAccessToken(c)
+	}
+	if accessToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "access token is required"})
+		return
+	}
 
 	userAgent := c.GetHeader("User-Agent")
 	ip := c.ClientIP()
 
-	resp, err := h.client.Refresh(c.Request.Context(), req.RefreshToken, userAgent, ip, userGUID.(string), sessionID.(string))
+	resp, err := h.client.Refresh(c.Request.Context(), req.RefreshToken, accessToken, userAgent, ip)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -129,4 +137,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"access_expires_at":  resp.AccessExpiresAt,
 		"refresh_expires_at": resp.RefreshExpiresAt,
 	})
+}
+
+func extractAccessToken(c *gin.Context) string {
+	header := c.GetHeader("Authorization")
+	if strings.HasPrefix(header, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	}
+
+	token, err := c.Cookie("access_token")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(token)
 }
