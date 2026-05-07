@@ -17,7 +17,7 @@ HTTP Gateway
 Gateway:
 
 - принимает HTTP на `:8080` внутри контейнера;
-- в compose опубликован наружу как `localhost:8000`;
+- в локальной инфраструктуре опубликован наружу как `localhost:8000`;
 - вызывает Auth/User/Analytics по gRPC;
 - для protected routes проверяет `Authorization: Bearer <access_token>` через Auth Service;
 - передает отчеты Analytics Service клиентам как HTTP JSON.
@@ -48,8 +48,6 @@ Protected routes ожидают access token в заголовке:
 Authorization: Bearer <access_token>
 ```
 
-Refresh route принимает `refresh_token` в JSON body. `access_token` можно передать в body, через `Authorization` или через cookie `access_token`.
-
 ## Связь с сервисами
 
 Gateway использует адреса из env:
@@ -64,25 +62,12 @@ gRPC proto-файлы лежат в `http_gateway/proto`. Они должны б
 
 ## Запуск
 
-Для запуска всего backend-стека через Docker Compose из корня репозитория:
+Docker Compose для локального запуска вынесен в репозиторий `loop_infra`.
+
+Из корня `loop_infra`:
 
 ```bash
 docker compose up --build
 ```
 
-Compose поднимает HTTP Gateway, Auth Service, User Service, Analytics Service, PostgreSQL, Redis, Kafka и нужные Kafka topics.
-
-После запуска:
-
-- HTTP Gateway: `http://localhost:8000`
-- Auth gRPC: `localhost:50051`
-- User gRPC: `localhost:50052`
-- Analytics gRPC: `localhost:50053`
-- Kafka external listener: `localhost:9093`
-
-## Данные между gateway и сервисами
-
-- Auth flow: HTTP JSON -> Auth gRPC -> HTTP JSON с токенами/статусом.
-- User flow: HTTP JSON/path params -> User gRPC -> HTTP JSON profile/settings.
-- Analytics flow: HTTP query params -> Analytics gRPC -> HTTP JSON reports/events.
-- Kafka events в gateway не проходят: auth/user публикуют события, analytics их читает, gateway только запрашивает отчеты по gRPC.
+В этом репозитории остается код сервиса, `Dockerfile` и пример переменных окружения `http_gateway/.env.example`.
